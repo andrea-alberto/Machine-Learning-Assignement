@@ -1,0 +1,116 @@
+---
+title: "Machine Learning Assignement"
+author: "Andrea Alberto"
+date: "19 December 2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(
+	echo=TRUE, warning=FALSE, message=TRUE,
+	cache=TRUE)
+library(ggplot2)	
+library(plyr)
+library(caret)
+```
+
+# Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. 
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+# Data
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+```{r}
+# training <- read.csv(url('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv',na.strings = c("NA","NaN","","#DIV/0!","")))
+# testing <- read.csv(url('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv',na.strings = c("NA","NaN","","#DIV/0!",""))
+
+training <- read.csv("D:\\Personal\\Projects\\My\\DataScienceToolboxCourse\\prjs\\pml-training.csv",header = TRUE,na.strings = c("NA","NaN","","#DIV/0!",""))
+testing <- read.csv("D:\\Personal\\Projects\\My\\DataScienceToolboxCourse\\prjs\\pml-testing.csv",header = TRUE,na.strings = c("NA","NaN","","#DIV/0!",""))
+```
+
+# Data Processing
+We remove the columns we won't use
+```{r}
+badColumns1 <- c('X','raw_timestamp_part_1','raw_timestamp_part_2','cvtd_timestamp','new_window')
+training <- training[,!(names(training) %in% badColumns1)]
+```
+
+Check the number of na per each predictor
+```{r}
+naVars <- sapply(training, function(x) sum(is.na(x))) > (.9 * nrow(training))
+sum(naVars)
+```
+
+Out of 160 variables 100 are full of NAs. We won't use them.
+
+Keep only the variable with less the 90% of NAs
+```{r}
+namesNotNaVars <- names(naVars[!naVars])
+training <- training[,namesNotNaVars]
+```
+
+# Model fit and selection
+Let's split the training data in training and test to forecast the out-of-bag accuracy
+```{r}
+inTrain <- createDataPartition(training$classe, p = 0.6)[[1]]
+test <- training[-inTrain,]
+training <- training[ inTrain,]
+```
+
+Fit a randomForest model which has included cross-validation
+```{r}
+set.seed(1234)
+rfFit <- train(classe ~ . , data=training, method='rf', importance = T, trControl = trainControl(method = "cv", number = 3))
+rfFit
+```
+Accuracy 0.9898951
+
+Fit a boosting model which has included cross-validation
+```{r boostTrain}
+set.seed(1234)
+garbage <- capture.output(
+    boostFit <- train(classe ~ . , data=training, method='gbm', trControl = trainControl(method = "cv", number = 3))
+)
+boostFit
+```
+Accuracy 0.9841200
+
+
+# Testing
+Let's get an estime of out-of-bag accuracy
+
+Random Forest model
+```{r}
+rfTestClasse <- predict(rfFit,test)
+confusionMatrix(test$classe,rfTestClasse)
+```
+Accuracy : 0.9969
+
+Boost model
+```{r boostPredict}
+boostTestClasse <- predict(boostFit,test)
+confusionMatrix(test$classe,boostTestClasse)
+```
+Accuracy : 0.9892
+
+
+# Validation
+We can now predict the 'classe' of the validation data set
+```{r}
+validation <- testing[,!(names(testing) %in% badColumns1)]
+validation <- validation[,namesNotNaVars[!(namesNotNaVars %in% c('classe'))]]
+
+rfValidationClasse <- predict(rfFit,validation)
+rfValidationClasse
+```
